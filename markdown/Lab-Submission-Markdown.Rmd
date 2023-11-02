@@ -209,9 +209,9 @@ itemFrequencyPlot(tr_listings, topN = 10, type = "relative",
 ```{r}
 library(arulesViz)
 association_rules_listings <- apriori(tr_listings,
-                             parameter = list(support = 0.001, # Increase support threshold
+                             parameter = list(support = 0.001,
                                               confidence = 0.005,
-                                              maxlen = 10)) # Reduce the maximum length of rules
+                                              maxlen = 10)) 
 
 #Print the association rules to view the top 10 rules
 summary(association_rules_listings)
