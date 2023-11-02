@@ -35,3 +35,218 @@ knitr::opts_chunk$set(
   collapse = FALSE
 )
 ```
+
+# Association Rule Learning
+
+# Load and pre-process the dataset
+
+### FORMAT 1: Single Format
+
+```{r}
+library(arules)
+transactions_single_format_listings <- read.transactions("data/transactions_single_format.csv", format = "single", cols = c(1, 2))
+
+summary(transactions_single_format_listings)  # Summary of the transactions
+inspect(transactions_single_format_listings)  # View the transactions
+
+
+
+```
+
+### FORMAT 2: Basket Format
+
+```{r}
+transactions_basket_format_listings <-
+  read.transactions("data/transactions_basket_format.csv",
+                    format = "basket", sep = ",", cols = 2)
+summary(transactions_basket_format_listings)  # Summary of the transactions
+inspect(transactions_basket_format_listings)  # View the transactions
+```
+
+### Dataset loader
+
+```{r}
+listings <- read.csv("data/listings_summary_cape_town.csv")
+```
+
+## Handle missing values
+
+### Are there missing values in the dataset?
+
+```{r}
+library(naniar)
+any_na(listings)
+```
+
+### How many?
+
+```{r}
+n_miss(listings)
+```
+
+### What is the proportion of missing data in the entire dataset?
+
+```{r}
+prop_miss(listings)
+```
+
+### What is the number and percentage of missing values grouped by each variable?
+
+```{r}
+miss_var_summary(listings)
+```
+
+### Which variables contain the most missing values?
+
+```{r}
+gg_miss_var(listings)
+```
+
+### Which combinations of variables are missing together?
+
+```{r}
+gg_miss_upset(listings)
+```
+
+## Remove the variables with missing values
+
+```{r}
+listings_removed_vars <-
+  listings %>% dplyr::select(-neighbourhood_group, -reviews_per_month, -license, -last_review )
+
+dim(listings_removed_vars)
+
+```
+
+```{r}
+# Are there missing values in the dataset?
+any_na(listings_removed_vars)
+
+# What is the number and percentage of missing values grouped by each variable?
+miss_var_summary(listings_removed_vars)
+
+#Identify categorical variables
+str(listings_removed_vars)
+```
+
+### Save progress
+
+We can save the pre-processing progress made so far
+
+```{r}
+write.csv(listings_removed_vars, file = "data/listings_data_before_single_transaction_format.csv", row.names = FALSE)
+
+listings_removed_vars <- read.csv(file = "data/listings_data_before_single_transaction_format.csv")
+```
+
+# Create a transaction data using the "basket format"
+
+```{r}
+transaction_data_listings <-
+  plyr::ddply(listings_removed_vars,
+    c("id","name", "price"),
+    function(df1) paste(df1$neighbourhood, collapse = ","))
+
+View(transaction_data_listings)
+
+```
+
+### Record only the `items` variable
+
+```{r}
+library(dplyr)
+
+transaction_data_listings <-
+  transaction_data_listings %>%
+  dplyr::select("items" = V1)%>% 
+  mutate(items = paste("{", items, "}", sep = ""))
+
+View(transaction_data_listings)
+```
+
+### Save the transactions in CSV format
+
+```{r}
+write.csv(transaction_data_listings,
+          "data/transactions_basket_format_listings.csv",
+          quote = FALSE, row.names = FALSE)
+```
+
+### Read the transactions from the CSV file
+
+```{r}
+tr_listings <-
+  read.transactions("data/transactions_basket_format_listings.csv",
+    format = "basket",
+    header = TRUE,
+    rm.duplicates = TRUE,
+    sep = ","
+  )
+
+print(tr_listings)
+summary(tr_listings)
+```
+
+## Basic EDA
+
+```{r}
+library(RColorBrewer)
+
+itemFrequencyPlot(tr_listings, topN = 10, type = "absolute",
+                  col = brewer.pal(8, "Pastel2"),
+                  main = "Absolute Item Frequency Plot",
+                  horiz = TRUE,
+                  mai = c(0.85, 1, 0.5, 0.5))
+itemFrequencyPlot(tr_listings, topN = 10, type = "relative",
+                  col = brewer.pal(8, "Pastel2"),
+                  main = "Relative Item Frequency Plot",
+                  horiz = TRUE,
+                  mai = c(0.85, 1, 0.5, 0.5))
+```
+
+### Create the association rules
+
+```{r}
+library(arulesViz)
+association_rules_listings <- apriori(tr_listings,
+                             parameter = list(support = 0.001, # Increase support threshold
+                                              confidence = 0.005,
+                                              maxlen = 10)) # Reduce the maximum length of rules
+
+#Print the association rules to view the top 10 rules
+summary(association_rules_listings)
+inspect(association_rules_listings)
+# To view the top 10 rules
+inspect(association_rules_listings)
+plot(association_rules_listings)
+
+```
+
+### Find specific rules
+
+```{r}
+ward_association_rules <- # nolint
+  apriori(tr_listings, parameter = list(supp = 0.001, conf = 0.05),
+          appearance = list(default = "rhs",
+                            rhs = "{Ward 100}"))
+inspect(head(ward_association_rules))
+```
+
+### Visualize the rules
+
+```{r}
+rules_to_plot <-
+  association_rules_listings[quality(association_rules_listings)$confidence > 0.05] # nolint
+#Plot SubRules
+plot(rules_to_plot)
+plot(rules_to_plot, method = "two-key plot")
+```
+
+```{r}
+top_10_rules_to_plot <- head(rules_to_plot, n = 10, by = "confidence")
+plot(top_10_rules_to_plot, method = "graph",  engine = "htmlwidget")
+
+saveAsGraph(head(rules_to_plot, n = 1000, by = "lift"),
+            file = "graph/association_rules_prod_no_reps.graphml")
+
+```
